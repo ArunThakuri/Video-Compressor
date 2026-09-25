@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>pending</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  a { display: block; width: 300px; height: 100px; line-height: 100px;
+      text-align: center; background: #6ee7a8; color: #000; }
+</style>
+<a id="dl" download="dltest.bin">Download</a>
+<script>
+var blob = new Blob([new Uint8Array(2048).fill(7)], { type: 'application/octet-stream' });
+var a = document.getElementById('dl');
+a.href = URL.createObjectURL(blob);
+</script>

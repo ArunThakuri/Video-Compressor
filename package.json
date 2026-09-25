@@ -1,0 +1,15 @@
+{
+  "name": "mp4-optimizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local MP4/MOV container patcher - no re-encode, no upload, zero quality loss.",
+  "main": "engine.js",
+  "bin": {
+    "mp4-patch": "./patch.js"
+  },
+  "scripts": {
+    "test": "node test/ui-test.js",
+    "fixtures": "sh test/make-fixtures.sh"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,7 @@
+# generated patch output
+test/gen/
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
