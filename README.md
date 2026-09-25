@@ -99,9 +99,8 @@ checked to land inside `mdat`.
 ### What it does *not* do
 
 Some tools in this space advertise "fake sample injection", "inflating sample
-counts to 400 FPS", or rewriting edit lists and sync-sample tables. This one
-does none of that, and neither does the engine it was modelled on — its
-published patcher touches only `mvhd`, `udta`, and the offset tables.
+counts to 400 FPS", or rewriting edit lists and sync-sample tables. This one does
+none of that: it touches only `mvhd`, `udta`, and the offset tables.
 
 The "must be constant frame rate" advice you'll see is really just this: a
 variable-frame-rate export frequently has inconsistent sample tables, and that
@@ -239,14 +238,14 @@ whose sample tables disagree, and files that are already patched.
 
 ## The encoder tag
 
-The engine's tag is configurable and defaults to `Lavf61.7.100` (ffmpeg's own
-signature — a neutral "professionally muxed" value).
+The tag written into `©too` is configurable and defaults to `Lavf61.7.100`
+(ffmpeg's own signature — a neutral "professionally muxed" value). Set it with
+`--tag`, or in `index.html` where `TAG` is defined. `--no-tag` writes none.
 
-Worth knowing: the hosted tool this was modelled on writes **its own URL** as
-the tag (`Zilem Method https://zilemmethod.com`). That value is its branding and
-its marker for "already patched", not a codec parameter — so it is not
-reproduced here. If the exact string matters for your case, set it with
-`--tag`, or in `index.html` where `TAG` is defined.
+It is worth knowing what this field actually is: an arbitrary string, not a
+codec parameter. Nothing verifies it and nothing enforces it. Pick whatever you
+want the file to claim it was muxed by, or write nothing at all — the rest of the
+patch does not depend on it.
 
 ---
 
@@ -256,14 +255,14 @@ reproduced here. If the exact string matters for your case, set it with
   proven one.** The container edit is real and verifiable; the effect on any
   given platform's ingest pipeline is not something this repo can establish. It
   is worth testing against a control rather than assuming the mechanism works.
-- **Upload path matters more than the patch.** The hosted tool's own guide says
-  uploading through the mobile app re-compresses on the way up, which defeats
-  the point — it recommends the desktop web uploader instead. That advice is
-  independent of anything this code does.
+- **Upload path matters more than the patch.** Uploading through a platform's
+  mobile app typically re-compresses on the way up, which defeats the point — the
+  desktop web uploader is the route that avoids it. That advice is independent of
+  anything this code does.
 - The original is never modified; output is a new file. Keep the original until
   you have confirmed the patched file behaves.
-- `--faststart` reorders `moov` ahead of `mdat`. It is off by default (matching
-  the reference engine) and is a genuine, standard improvement when you want it.
+- `--faststart` reorders `moov` ahead of `mdat`. It is off by default and is a
+  genuine, standard improvement when you want it.
 
 ---
 
