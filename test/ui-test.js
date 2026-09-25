@@ -111,8 +111,11 @@ const cases = [
   ['test/meta_iso.mp4', true],   /* meta as an ISO FullBox */
   ['test/meta_qt.mp4', true],    /* meta in QuickTime shape - regression */
   ['test/mdat64.mp4', true],     /* 64-bit mdat header - regression */
-  ['test/frag.mp4', false],
-  ['test/vp9.mp4', false]
+  ['test/dv_hevc.mp4', true],    /* Dolby Vision over HEVC */
+  ['test/dv_avc.mp4', true],     /* Dolby Vision over AVC */
+  ['test/av1.mp4', true],        /* AV1 */
+  ['test/vp9.mp4', true],        /* VP9 - accepted now, was a rejection case */
+  ['test/frag.mp4', false]       /* fragmented: still genuinely unsupported */
 ]
 
 /* The UI pipeline is async (it awaits the file read and, for large files, a

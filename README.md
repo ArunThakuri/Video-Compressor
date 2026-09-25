@@ -202,6 +202,12 @@ both drive desktop Chrome with mobile metrics — that catches layout and flow
 problems, but it is **not WebKit**, so iOS behaviour remains inferred from the
 documented support rather than observed.
 
+**iPhone video codecs are covered.** An iPhone records HEVC in a `.mov`, and
+Dolby Vision HDR as `dvh1` — both accepted, along with the MOV→MP4 relabel. A
+Dolby Vision fixture is built by `test/make-codec-fixture.py`, which rewrites the
+sample-entry fourcc in place; that tag is the whole container-level difference
+between an HEVC file and a Dolby Vision one.
+
 ---
 
 ## Supported
@@ -209,13 +215,25 @@ documented support rather than observed.
 | | |
 |---|---|
 | Containers | MP4, MOV (MOV is relabelled `qt  ` → `mp42`) |
-| Video | H.264/AVC (`avc1`, `avc3`), HEVC/H.265 (`hvc1`, `hev1`, `hvc2`, `hev2`) |
+| Video | H.264/AVC (`avc1`, `avc3`), HEVC/H.265 (`hvc1`, `hev1`, `hvc2`, `hev2`), Dolby Vision (`dvh1`, `dvhe`, `dva1`, `dvav`), AV1 (`av01`), VP9 (`vp09`) |
 | Audio | AAC (`mp4a`), at least one track |
 | Structure | exactly one `ftyp`, `moov`, `mdat`; one video track; constant frame rate; single codec description per track |
 
-Refused, with a reason: fragmented MP4 (`moof`), AV1/VP9/other codecs, silent
-videos, PCM audio, files whose sample tables disagree, and files that are
-already patched.
+The patch never touches the video description, so it is **codec-agnostic by
+construction** — the sample tables it rewrites (`stsz`, `stsc`, `stts`,
+`stco`/`co64`) look the same whatever the codec. The tag list above is about
+recognising the file, not about what can be patched safely. Anything outside it
+is refused with a note to that effect, and `--any-codec` patches it anyway:
+
+```bash
+node patch.js clip.mp4 --any-codec
+```
+
+`--inspect` never refuses on codec grounds, so an unrecognised file can still be
+described.
+
+Refused, with a reason: fragmented MP4 (`moof`), silent videos, PCM audio, files
+whose sample tables disagree, and files that are already patched.
 
 ---
 

@@ -28,6 +28,7 @@ Options:
       --suffix <s>      Suffix for auto-named outputs (default: .optimized)
       --tag <string>    Encoder tag to write into ©too (default: ${MP4Patch.DEFAULT_TAG})
       --no-tag          Skip writing an encoder tag
+      --any-codec       Patch regardless of the video codec tag
       --faststart       Move moov ahead of mdat
       --inspect         Print track/container info and exit without writing
       --force           Overwrite existing output files
@@ -44,6 +45,7 @@ function parseArgs(argv) {
     else if (a === '--suffix') opts.suffix = argv[++i]
     else if (a === '--tag') opts.tag = argv[++i]
     else if (a === '--no-tag') opts.tag = ''
+    else if (a === '--any-codec') opts.anyCodec = true
     else if (a === '--faststart') opts.faststart = true
     else if (a === '--inspect') opts.inspect = true
     else if (a === '--force') opts.force = true
@@ -92,7 +94,8 @@ function patchOne(file, outPath, opts, used) {
   const t0 = Date.now()
   const result = MP4Patch.quickPatch(buf, {
     tag: opts.tag === undefined ? MP4Patch.DEFAULT_TAG : opts.tag,
-    faststart: opts.faststart
+    faststart: opts.faststart,
+    allowAnyCodec: !!opts.anyCodec
   })
   const report = result.report
   const outSize = result.size

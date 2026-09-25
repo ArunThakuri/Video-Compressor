@@ -20,6 +20,21 @@
 
   var VERSION = '1.0.0'
 
+  /* Video sample-entry tags this patcher recognises. The patch never touches the
+   * video description, so this list is about identifying the file, not about
+   * what can be patched safely — any MP4 with one video track and consistent
+   * sample tables patches identically whatever the codec. Dolby Vision tags are
+   * listed because phones emit them routinely. */
+  var VIDEO_CODECS = [
+    'avc1', 'avc3',                     /* H.264 / AVC */
+    'hvc1', 'hev1', 'hvc2', 'hev2',     /* HEVC / H.265 */
+    'dvh1', 'dvhe',                     /* Dolby Vision over HEVC */
+    'dva1', 'dvav',                     /* Dolby Vision over AVC */
+    'dav1',                             /* Dolby Vision over AV1 */
+    'av01',                             /* AV1 */
+    'vp09', 'vp08'                      /* VP9 / VP8 */
+  ]
+
   /* Boxes whose payload is a list of child boxes. */
   var CONTAINERS = ['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts', 'dinf', 'udta', 'ilst']
 
@@ -537,11 +552,19 @@
       fail('Expected exactly one video track, found ' + videoTracks.length + '.')
     }
     var video = videoTracks[0]
-    var isAvc = video.codec === 'avc1' || video.codec === 'avc3'
-    var isHevc = video.codec === 'hvc1' || video.codec === 'hev1' || video.codec === 'hvc2' || video.codec === 'hev2'
-    if (!isAvc && !isHevc) {
-      fail('Unsupported video codec: ' + (video.codec || 'unknown') + '. Export as H.264/AVC or HEVC/H.265.')
+
+    /* The patch is codec-agnostic, so an unrecognised tag is not a reason to
+     * refuse outright — but it is worth flagging, hence the escape hatch. */
+    if (!opts.allowAnyCodec && VIDEO_CODECS.indexOf(video.codec) < 0) {
+      fail('Unrecognised video codec: ' + (video.codec || 'unknown') + '. ' +
+        'The patch itself is codec-agnostic, so use --any-codec to patch it anyway.')
     }
+
+    var isAvc = video.codec === 'avc1' || video.codec === 'avc3'
+    var isHevc = video.codec === 'hvc1' || video.codec === 'hev1' ||
+      video.codec === 'hvc2' || video.codec === 'hev2'
+    var isDolbyVision = video.codec === 'dvh1' || video.codec === 'dvhe' ||
+      video.codec === 'dva1' || video.codec === 'dvav' || video.codec === 'dav1'
 
     var audioTracks = tables.filter(function (x) { return x.handler === 'soun' })
     var aac = audioTracks.filter(function (x) { return x.codec === 'mp4a' })
@@ -564,7 +587,8 @@
     return {
       buf: buf, top: top, ftypBox: ftypBox, moovBox: moovBox, mdatBox: mdatBox,
       moov: moov, mvhd: mvhd, traks: traks, tables: tables,
-      video: video, audio: aac[0], isAvc: isAvc, isHevc: isHevc
+      video: video, audio: aac[0],
+      isAvc: isAvc, isHevc: isHevc, isDolbyVision: isDolbyVision
     }
   }
 
@@ -730,23 +754,25 @@
 
   function quickPatch(input, options) {
     var buf = toU8(input)
-    var parsed = parseFile(buf)
+    var parsed = parseFile(buf, {
+      allowAnyCodec: !!(options && options.allowAnyCodec)
+    })
     return applyPatch(parsed, options)
   }
 
   function inspect(input) {
     var buf = toU8(input)
-    var parsed = parseFile(buf, { allowPatched: true })
+    var parsed = parseFile(buf, { allowPatched: true, allowAnyCodec: true })
     return describe(parsed.buf, parsed)
   }
 
   function checkCompatibility(input) {
     try {
-      var parsed = parseFile(toU8(input), { allowPatched: true })
+      var parsed = parseFile(toU8(input), { allowPatched: true, allowAnyCodec: true })
       return {
         compatible: true, reason: '',
         codec: parsed.video.codec,
-        isAvc: parsed.isAvc, isHevc: parsed.isHevc,
+        isAvc: parsed.isAvc, isHevc: parsed.isHevc, isDolbyVision: parsed.isDolbyVision,
         sampleCount: parsed.video.count,
         audioCodec: parsed.audio.codec,
         audioTrackCount: parsed.tables.filter(function (t) { return t.handler === 'soun' }).length
@@ -797,7 +823,7 @@
   /* Expose a light structural dump for the CLI's --inspect. */
   function inspectTracks(input) {
     var buf = toU8(input)
-    var parsed = parseFile(buf, { allowPatched: true })
+    var parsed = parseFile(buf, { allowPatched: true, allowAnyCodec: true })
 
     function trackInfo(t) {
       var info = {
