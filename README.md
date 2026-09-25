@@ -166,6 +166,44 @@ automatically if any rewritten offset crosses 4 GB.
 
 ---
 
+## On a phone
+
+`index.html` is static, so GitHub Pages serves it as-is (`https`, which is a
+secure context — needed for both `showSaveFilePicker` and the share sheet). The
+layout was checked at 320, 360 and 390 px wide, and tapping the drop zone,
+picking a file and patching all work at those sizes.
+
+The two platforms are **not** equivalent, though:
+
+| | Android Chrome | iOS (Safari *and* Chrome) |
+|---|---|---|
+| Patch | works | works |
+| `showSaveFilePicker` (stream to disk) | yes | **no** |
+| Saving | Downloads | Files |
+| Share sheet → Photos | yes | yes |
+
+**Chrome on iOS is not Chrome.** Apple requires every iOS browser to use WebKit,
+so Chrome there is Safari underneath and has Safari's limits. MDN lists
+`showSaveFilePicker` as *"Safari on iOS: No support"*, and that applies to Chrome
+on iOS too — so iOS always falls back to the in-memory blob path. That makes
+memory the real constraint there: a phone tab's budget is far smaller than a
+desktop's, so keep files modest on iOS and prefer the CLI for anything long.
+
+**Getting the file into Photos on iOS** is the awkward part — a blob
+`<a download>` lands in Files, not the camera roll. The **Share** button is the
+route: it hands the patched file to the iOS share sheet, which can save it to
+Photos or straight into another app. It is feature-detected with
+`navigator.canShare({ files: [...] })`, so it only appears where sharing files
+actually works, and it cannot misfire on a desktop.
+
+`test/mobile-check.mjs` covers the layout and flow, and
+`test/stream-save-check.mjs <fixture> share` covers the share path. Note that
+both drive desktop Chrome with mobile metrics — that catches layout and flow
+problems, but it is **not WebKit**, so iOS behaviour remains inferred from the
+documented support rather than observed.
+
+---
+
 ## Supported
 
 | | |

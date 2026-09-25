@@ -8,7 +8,7 @@
     "mp4-patch": "./patch.js"
   },
   "scripts": {
-    "test": "node test/ui-test.js && node test/stream-save-check.mjs test/source.mp4 stream && node test/stream-save-check.mjs test/source.mp4 cancel",
+    "test": "node test/ui-test.js && node test/stream-save-check.mjs test/source.mp4 stream && node test/stream-save-check.mjs test/source.mp4 cancel && node test/stream-save-check.mjs test/source.mp4 share",
     "fixtures": "sh test/make-fixtures.sh"
   },
   "license": "MIT"

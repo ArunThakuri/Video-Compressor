@@ -69,6 +69,27 @@ const CANCEL_INIT = `
   };
 `
 
+const SHARE_INIT = `
+  window.__probeRan = 1;
+  window.__shared = null;
+  Object.defineProperty(navigator, 'canShare', {
+    configurable: true,
+    value: function (d) { return !!(d && d.files && d.files.length); }
+  });
+  Object.defineProperty(navigator, 'share', {
+    configurable: true,
+    value: async function (d) {
+      const f = d.files[0];
+      const buf = new Uint8Array(await f.arrayBuffer());
+      const h = await crypto.subtle.digest('SHA-256', buf);
+      window.__shared = {
+        name: f.name, size: f.size, count: d.files.length,
+        hex: [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('')
+      };
+    }
+  });
+`
+
 const HASH_EXPR = `(async () => {
   const sink = window.__sink;
   if (!sink) return JSON.stringify({ none: true, cancelled: window.__cancelled || 0 });
@@ -136,8 +157,12 @@ ws.addEventListener('message', (e) => {
 const { targetId } = await send('Target.createTarget', { url: 'about:blank' })
 const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
 await send('Page.enable', {}, sessionId)
+/* Tall enough that the result card is on screen: a click at coordinates below
+ * the viewport would silently miss. */
+await send('Emulation.setDeviceMetricsOverride',
+  { width: 1000, height: 1600, deviceScaleFactor: 1, mobile: false }, sessionId)
 await send('Page.addScriptToEvaluateOnNewDocument', {
-  source: mode === 'cancel' ? CANCEL_INIT : STREAM_INIT
+  source: mode === 'cancel' ? CANCEL_INIT : (mode === 'share' ? SHARE_INIT : STREAM_INIT)
 }, sessionId)
 await send('Page.navigate', { url }, sessionId)
 await sleep(1500)
@@ -194,7 +219,56 @@ console.log('\nmode           :', mode, '·', fixture)
 console.log('reject         :', state.reject || 'none')
 if (state.opfsError) console.log('OPFS note      :', state.opfsError)
 
-if (mode === 'cancel') {
+if (mode === 'share') {
+  const btnInfo = await send('Runtime.evaluate', {
+    expression: `(() => {
+      const b = document.querySelector('#out .actions button');
+      if (!b) return JSON.stringify({ found: false, actions: !!document.querySelector('#out .actions') });
+      const r = b.getBoundingClientRect();
+      return JSON.stringify({ found: true, label: b.textContent,
+        x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
+        innerHeight: innerHeight, inViewport: r.top >= 0 && r.bottom <= innerHeight });
+    })()`, returnByValue: true
+  }, sessionId)
+  const bi = JSON.parse(btnInfo.result.value)
+
+  console.log('share button   :', bi.found ? bi.label : '(not rendered)')
+  check('Share button rendered alongside Download', bi.found === true, JSON.stringify(bi))
+  check('Download still offered', state.hasDownload === true)
+
+  if (bi.found) {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: bi.x, y: bi.y, button: 'left', clickCount: 1 }, sessionId)
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bi.x, y: bi.y, button: 'left', clickCount: 1 }, sessionId)
+    await sleep(800)
+  }
+
+  const post = await send('Runtime.evaluate', {
+    expression: `(() => {
+      const b = document.querySelector('#out .actions button');
+      return JSON.stringify({
+        labelAfter: b ? b.textContent : null,
+        disabledAfter: b ? b.disabled : null,
+        actionsHtml: document.querySelector('#out .actions')
+          ? document.querySelector('#out .actions').children.length : 0
+      });
+    })()`, returnByValue: true
+  }, sessionId)
+  console.log('after click    :', post.result.value)
+
+  const shared = await send('Runtime.evaluate', {
+    expression: 'JSON.stringify(window.__shared)', returnByValue: true
+  }, sessionId)
+  const sh = JSON.parse(shared.result.value)
+  console.log('shared         :', sh ? (sh.count + ' file, ' + sh.size + ' bytes') : 'nothing')
+  console.log('')
+  check('navigator.share called', !!sh, 'nothing shared')
+  if (sh) {
+    check('shared exactly one file', sh.count === 1, String(sh.count))
+    check('shared file named .optimized.mp4', /\.optimized\.mp4$/.test(sh.name), sh.name)
+    check('shared bytes are byte-identical to the engine output',
+      sh.hex === expectedHash && sh.size === expected.size, sh.size + ' vs ' + expected.size)
+  }
+} else if (mode === 'cancel') {
   console.log('picker calls   :', state.cancelled)
   console.log('card shows     :', state.hasDownload ? 'Download button' : (state.savedText || '(nothing)'))
   console.log('')

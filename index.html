@@ -135,6 +135,8 @@
   .tick.bad { background: color-mix(in srgb, var(--err) 13%, transparent); color: var(--err); }
 
   .card-body { flex: 1; min-width: 0; }
+
+  .actions { flex: none; display: flex; gap: 8px; align-items: center; }
   .card-name {
     font-weight: 560; font-size: 14px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -425,10 +427,22 @@
        * where it went rather than a button that would write a second copy. */
       main.appendChild(el('div', 'saved', 'Saved · ' + row.savedTo))
     } else {
+      var actions = el('div', 'actions')
+
       var dl = el('a', 'btn', 'Download')
       dl.href = row.url
       dl.download = row.outName
-      main.appendChild(dl)
+      actions.appendChild(dl)
+
+      /* The only route into Photos on iOS, where there is no file picker. */
+      if (canShareFiles && row.parts) {
+        var sh = el('button', 'btn ghost', 'Share')
+        sh.type = 'button'
+        sh.addEventListener('click', function () { shareRow(row, sh) })
+        actions.appendChild(sh)
+      }
+
+      main.appendChild(actions)
     }
 
     var stats = el('div', 'stats')
@@ -471,6 +485,23 @@
     return name.replace(/\.[^.]+$/, '') + '.optimized.mp4'
   }
 
+  /* Hand the patched file to the OS share sheet. Built on demand from the parts
+   * so nothing is copied unless the button is actually pressed. */
+  async function shareRow(row, btn) {
+    var label = btn.textContent
+    try {
+      btn.disabled = true
+      var file = new File(row.parts, row.outName, { type: 'video/mp4' })
+      await navigator.share({ files: [file], title: row.outName })
+      btn.textContent = 'Shared'
+    } catch (e) {
+      /* AbortError is the user dismissing the sheet — not a failure. */
+      btn.textContent = (e && e.name === 'AbortError') ? label : 'Could not share'
+    } finally {
+      setTimeout(function () { btn.textContent = label; btn.disabled = false }, 1600)
+    }
+  }
+
   /* Writing the parts straight to a file handle means the output never has to
    * exist in memory at all — the bulk of it is still a view onto the input, so
    * a tab can patch a file far larger than its own allocation budget. */
@@ -492,6 +523,19 @@
     ? window.MP4_STREAM_THRESHOLD
     : 128 * 1024 * 1024
   var canStream = typeof window.showSaveFilePicker === 'function'
+
+  /* iOS has neither showSaveFilePicker nor a way to write into Photos from a
+   * download link — a blob <a download> lands in Files. The share sheet is the
+   * only route to Photos there, so offer it wherever file sharing actually
+   * works. Feature-detected once, with a throwaway file, so the button only
+   * ever appears where navigator.share would really accept it. */
+  var canShareFiles = (function () {
+    try {
+      if (!navigator.canShare) return false
+      var probe = new File([new Uint8Array(1)], 'probe.mp4', { type: 'video/mp4' })
+      return navigator.canShare({ files: [probe] })
+    } catch (e) { return false }
+  })()
 
   function readFile(f) {
     return new Promise(function (resolve, reject) {
@@ -551,7 +595,9 @@
         moovGrew: res.report.moovGrew,
         shifted: res.report.shifted,
         url: null,
-        savedTo: null
+        savedTo: null,
+        /* kept only for the share path; views onto the input, so no extra copy */
+        parts: null
       }
 
       if (handle) {
@@ -561,6 +607,7 @@
       } else {
         var blob = new Blob(res.parts, { type: 'video/mp4' })
         row.url = URL.createObjectURL(blob)
+        row.parts = res.parts
       }
 
       card.remove()
