@@ -31,6 +31,31 @@ against headless Chrome rather than assumed:
 If your browser ever does block the save, serve the folder instead:
 `py -m http.server 8000 --directory .` and open `http://127.0.0.1:8000/`.
 
+### Saving large files
+
+Files at or above **128 MB** stream straight to disk through
+`showSaveFilePicker` instead of being held in memory behind a download link.
+Because the output parts are mostly views onto the input, nothing is
+materialised: peak memory is roughly the input alone, so a 4K capture far larger
+than a tab's allocation budget still works. Override the threshold before the
+page script runs with `window.MP4_STREAM_THRESHOLD = <bytes>` — `0` streams
+everything.
+
+Cancel the picker and it falls back to the normal in-memory download, patched
+and untouched. Both outcomes are covered by `test/stream-save-check.mjs`.
+
+Two things checked rather than assumed:
+
+- **OPFS is blocked on `file://`** ("unsafe for access within a Web
+  application"), which is why the test falls back to a recording stub and says
+  so. The stub still exercises the real write loop — one `write()` per part in
+  order, then `close()` — and the result is compared by SHA-256 against the
+  engine's own output.
+- **`showSaveFilePicker` is not blocked on `file://`.** Called from a real mouse
+  click it reaches the dialog stage and fails only with `AbortError`, identical
+  to `http://`, because headless Chrome cannot display a native picker. A
+  `SecurityError` would have meant the origin was refused; there wasn't one.
+
 **Command line**
 
 ```bash
@@ -195,6 +220,8 @@ reproduced here. If the exact string matters for your case, set it with
 | `patch.js` | CLI: batch, inspect, tagging, faststart |
 | `test/ui-test.js` | drives the UI's real code path against a stubbed DOM |
 | `test/file-download-check.mjs` | proves blob downloads save over `file://` (needs Chrome) |
+| `test/stream-save-check.mjs` | exercises the streaming save and its cancel fallback (needs Chrome) |
+| `test/mem-bench.js` | peak-memory ratios for the parts vs concat output shapes |
 | `test/*.mp4`, `test/*.mov` | generated fixtures (H.264 faststart / non-faststart, HEVC, MOV, fragmented, VP9) |
 
 No dependencies. Node 18+ for the CLI; any modern browser for the UI.

@@ -77,6 +77,10 @@
   /* ---------- drop zone ---------- */
 
   .drop {
+    /* A <label> is inline by default. With block-level children inside it, the
+     * inline box fragments — and each fragment paints its own copy of the
+     * border and background, which showed up as stray clipped boxes. */
+    display: block;
     position: relative;
     border: 1.5px dashed var(--line);
     border-radius: var(--radius);
@@ -157,6 +161,21 @@
   }
   .btn.ghost:hover { color: var(--text); border-color: #35353c; }
 
+  /* Shown instead of a Download button when the file was written straight to
+   * disk — there is nothing to download. */
+  .saved {
+    flex: none;
+    font-size: 12.5px;
+    font-weight: 540;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    padding: 7px 11px;
+    border-radius: 8px;
+    max-width: 200px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
   .stats {
     display: grid; grid-template-columns: repeat(4, 1fr);
     border-top: 1px solid var(--line-soft);
@@ -207,6 +226,8 @@
   .recent .s { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
   .recent a { color: var(--accent); text-decoration: none; font-weight: 540; font-size: 12.5px; }
   .recent a:hover { text-decoration: underline; }
+  .recent a.plain { color: var(--dim); font-weight: 400; cursor: default; }
+  .recent a.plain:hover { text-decoration: none; }
 
   .empty { color: var(--dim); font-size: 13px; }
 
@@ -397,11 +418,18 @@
     meta.appendChild(document.createTextNode(row.ms + ' ms'))
     body.appendChild(meta)
 
-    var dl = el('a', 'btn', 'Download')
-    dl.href = row.url
-    dl.download = row.outName
+    main.appendChild(body)
 
-    main.appendChild(body); main.appendChild(dl)
+    if (row.savedTo) {
+      /* Streamed straight to disk: there is no blob to download, so show
+       * where it went rather than a button that would write a second copy. */
+      main.appendChild(el('div', 'saved', 'Saved · ' + row.savedTo))
+    } else {
+      var dl = el('a', 'btn', 'Download')
+      dl.href = row.url
+      dl.download = row.outName
+      main.appendChild(dl)
+    }
 
     var stats = el('div', 'stats')
     function stat(label, value, good) {
@@ -425,86 +453,130 @@
     if (history.length > 8) history.pop()
 
     var line = el('div', 'recent')
-    line.appendChild(el('div', 'n', row.outName))
+    line.appendChild(el('div', 'n', row.savedTo || row.outName))
     line.appendChild(el('div', 's', human(row.after)))
-    var a = el('a', null, 'Download')
-    a.href = row.url; a.download = row.outName
-    line.appendChild(a)
+    if (row.url) {
+      var a = el('a', null, 'Download')
+      a.href = row.url; a.download = row.outName
+      line.appendChild(a)
+    } else {
+      line.appendChild(el('a', 'plain', 'on disk'))
+    }
     recents.appendChild(line)
   }
 
-  function handle(files) {
+  /* ---------- saving ---------- */
+
+  function optimizedName(name) {
+    return name.replace(/\.[^.]+$/, '') + '.optimized.mp4'
+  }
+
+  /* Writing the parts straight to a file handle means the output never has to
+   * exist in memory at all — the bulk of it is still a view onto the input, so
+   * a tab can patch a file far larger than its own allocation budget. */
+  async function writeParts(handle, parts) {
+    var w = await handle.createWritable()
+    try {
+      for (var i = 0; i < parts.length; i++) await w.write(parts[i])
+    } finally {
+      await w.close()
+    }
+  }
+
+  /* ---------- pipeline ---------- */
+
+  /* Files at or above this size are streamed straight to disk rather than held
+   * in memory for a download link. Set window.MP4_STREAM_THRESHOLD (bytes)
+   * before this script runs to override — 0 streams everything. */
+  var STREAM_THRESHOLD = typeof window.MP4_STREAM_THRESHOLD === 'number'
+    ? window.MP4_STREAM_THRESHOLD
+    : 128 * 1024 * 1024
+  var canStream = typeof window.showSaveFilePicker === 'function'
+
+  function readFile(f) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader()
+      r.onload = function () { resolve(r.result) }
+      r.onerror = function () { reject(new Error('The file could not be read.')) }
+      r.readAsArrayBuffer(f)
+    })
+  }
+
+  async function processOne(f, first) {
+    var card = el('div', 'card')
+    var main = el('div', 'card-main')
+    main.appendChild(el('div', 'spinner'))
+    var body = el('div', 'card-body')
+    body.appendChild(el('div', 'card-name', f.name))
+    var note = el('div', 'card-meta', canStream && first && f.size >= STREAM_THRESHOLD
+      ? 'choose where to save…' : 'reading…')
+    body.appendChild(note)
+    main.appendChild(body)
+    card.appendChild(main)
+    out.appendChild(card)
+
+    /* Ask for the destination before any await. showSaveFilePicker needs
+     * transient user activation, and the drop gesture is gone by the time a
+     * FileReader callback fires. Only the first file gets this, since the
+     * gesture is consumed here. */
+    var handle = null
+    if (canStream && first && f.size >= STREAM_THRESHOLD) {
+      try {
+        handle = await window.showSaveFilePicker({ suggestedName: optimizedName(f.name) })
+      } catch (e) {
+        handle = null            /* cancelled or refused — fall back to a blob */
+      }
+      note.textContent = 'reading…'
+    }
+
+    try {
+      var buf = await readFile(f)
+      var t0 = performance.now()
+      var res = MP4Patch.quickPatch(buf, { tag: TAG })
+      var ms = Math.max(1, Math.round(performance.now() - t0))
+
+      /* Read geometry off the input: the patch never changes it, and inspecting
+       * the output would force the extra copy we are trying to avoid. */
+      var info = MP4Patch.inspect(buf)
+      var video = info.tracks.filter(function (t) { return t.handler === 'vide' })[0]
+
+      var row = {
+        name: f.name,
+        outName: optimizedName(f.name),
+        before: buf.byteLength,
+        after: res.size,
+        codec: info.videoCodec,
+        samples: video ? video.samples : 0,
+        ms: ms,
+        moovGrew: res.report.moovGrew,
+        shifted: res.report.shifted,
+        url: null,
+        savedTo: null
+      }
+
+      if (handle) {
+        note.textContent = 'writing…'
+        await writeParts(handle, res.parts)
+        row.savedTo = handle.name
+      } else {
+        var blob = new Blob(res.parts, { type: 'video/mp4' })
+        row.url = URL.createObjectURL(blob)
+      }
+
+      card.remove()
+      renderSuccess(row)
+      addRecent(row)
+    } catch (e) {
+      card.remove()
+      renderReject(f.name, e && e.message ? e.message : String(e))
+    }
+  }
+
+  async function handle(files) {
     var list = Array.prototype.slice.call(files)
     if (!list.length) return
     clearOut()
-
-    var queue = list.slice()
-
-    function next() {
-      var f = queue.shift()
-      if (!f) return
-
-      /* Progress card for the file currently in flight. */
-      var card = el('div', 'card')
-      var main = el('div', 'card-main')
-      main.appendChild(el('div', 'spinner'))
-      var body = el('div', 'card-body')
-      body.appendChild(el('div', 'card-name', f.name))
-      body.appendChild(el('div', 'card-meta', 'reading…'))
-      main.appendChild(body)
-      card.appendChild(main)
-      out.appendChild(card)
-
-      var reader = new FileReader()
-
-      reader.onload = function () {
-        card.remove()
-        try {
-          var buf = reader.result
-          var t0 = performance.now()
-          var res = MP4Patch.quickPatch(buf, { tag: TAG })
-          var ms = Math.max(1, Math.round(performance.now() - t0))
-
-          /* Feed the Blob the parts rather than one concatenated copy — the
-           * bulk of the output is still a view onto the input, so this avoids
-           * materialising a second full copy of the file. */
-          var blob = new Blob(res.parts, { type: 'video/mp4' })
-
-          /* Read the geometry off the input: the patch never changes it, and
-           * inspecting the output would force that extra copy anyway. */
-          var info = MP4Patch.inspect(buf)
-          var video = info.tracks.filter(function (t) { return t.handler === 'vide' })[0]
-
-          var row = {
-            name: f.name,
-            outName: f.name.replace(/\.[^.]+$/, '') + '.optimized.mp4',
-            url: URL.createObjectURL(blob),
-            before: buf.byteLength,
-            after: res.size,
-            codec: info.videoCodec,
-            samples: video ? video.samples : 0,
-            ms: ms,
-            moovGrew: res.report.moovGrew,
-            shifted: res.report.shifted
-          }
-          renderSuccess(row)
-          addRecent(row)
-        } catch (e) {
-          renderReject(f.name, e && e.message ? e.message : String(e))
-        }
-        next()
-      }
-
-      reader.onerror = function () {
-        card.remove()
-        renderReject(f.name, 'The file could not be read.')
-        next()
-      }
-
-      reader.readAsArrayBuffer(f)
-    }
-
-    next()
+    for (var i = 0; i < list.length; i++) await processOne(list[i], i === 0)
   }
 
   drop.addEventListener('click', function (e) {

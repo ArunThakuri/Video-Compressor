@@ -115,12 +115,23 @@ const cases = [
   ['test/vp9.mp4', false]
 ]
 
+/* The UI pipeline is async (it awaits the file read and, for large files, a
+ * save handle), so wait for the in-flight spinner to clear before asserting. */
+async function settle() {
+  for (let i = 0; i < 200; i++) {
+    if (find(out, n => String(n.className).includes('spinner')).length === 0) return
+    await new Promise(r => setTimeout(r, 5))
+  }
+  throw new Error('pipeline never settled')
+}
+
 let pass = 0, fail = 0
 function check(label, cond, extra) {
   if (cond) { console.log('  ok   ' + label); pass++ }
   else { console.log('  FAIL ' + label + (extra ? '  -> ' + extra : '')); fail++ }
 }
 
+async function run() {
 for (const [rel, shouldPatch] of cases) {
   const p = path.join(__dirname, '..', rel)
   if (!fs.existsSync(p)) { console.log('  skip ' + rel + ' (missing)'); continue }
@@ -131,6 +142,7 @@ for (const [rel, shouldPatch] of cases) {
   const input = byId.file
   input.files = [fileFor(p)]
   input.listeners.change.forEach(fn => fn())
+  await settle()
 
 
   const reject = find(out, n => n.className.includes('reject'))
@@ -170,3 +182,6 @@ for (const [rel, shouldPatch] of cases) {
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
+}
+
+run().catch(e => { console.error('harness error:', e.message); process.exit(1) })
