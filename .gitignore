@@ -1,6 +1,10 @@
 # generated patch output
 test/gen/
 
+# Resolution fixtures are ~60 MB of generated video. Regenerate with
+#   sh test/make-res-fixtures.sh
+test/res_*.mp4
+
 node_modules/
 *.log
 .DS_Store

@@ -90,10 +90,12 @@ function inspectOne(file) {
 function patchOne(file, outPath, opts, used) {
   const buf = fs.readFileSync(file)
   const t0 = Date.now()
-  const { data, report } = MP4Patch.quickPatch(buf, {
+  const result = MP4Patch.quickPatch(buf, {
     tag: opts.tag === undefined ? MP4Patch.DEFAULT_TAG : opts.tag,
     faststart: opts.faststart
   })
+  const report = result.report
+  const outSize = result.size
   const ms = Date.now() - t0
 
   /* A relabelled MOV is an MP4 now, so name it like one. Then de-duplicate:
@@ -122,11 +124,21 @@ function patchOne(file, outPath, opts, used) {
     console.error(`  ! ${outPath} exists — skipping (use --force to overwrite)`)
     return false
   }
-  fs.writeFileSync(outPath, Buffer.from(data))
 
-  const pct = ((data.length / buf.length - 1) * 100)
+  /* Write the parts straight through instead of concatenating them first, so
+   * the output is never held in memory as one extra copy of the file. */
+  const fd = fs.openSync(outPath, 'w')
+  try {
+    for (const part of result.parts) {
+      fs.writeSync(fd, Buffer.from(part.buffer, part.byteOffset, part.byteLength))
+    }
+  } finally {
+    fs.closeSync(fd)
+  }
+
+  const pct = (outSize / buf.length - 1) * 100
   console.log(`  -> ${outPath}`)
-  console.log(`     ${human(buf.length)} -> ${human(data.length)} ` +
+  console.log(`     ${human(buf.length)} -> ${human(outSize)} ` +
     `(${pct >= 0 ? '+' : ''}${pct.toFixed(3)}%) in ${ms}ms`)
   console.log(`     moov grew ${report.moovGrew >= 0 ? '+' : ''}${report.moovGrew} B · ` +
     `chunk offsets shifted ${report.shifted >= 0 ? '+' : ''}${report.shifted} B` +

@@ -61,7 +61,15 @@ const sandbox = {
   document,
   window: { addEventListener: () => {} },
   FileReader,
-  Blob: class { constructor(parts) { this.parts = parts; this.size = parts[0].length } },
+  /* A real Blob concatenates its parts; the UI now hands it the whole parts
+   * array, so the stub must too or it would only ever see the first box. */
+  Blob: class {
+    constructor(parts) {
+      this.parts = parts
+      this.bytes = Buffer.concat(parts.map(p => Buffer.from(p.buffer, p.byteOffset, p.byteLength)))
+      this.size = this.bytes.length
+    }
+  },
   URL: { createObjectURL: (b) => { const u = 'blob:test/' + Object.keys(store).length; store[u] = b; return u } },
   performance: { now: () => Date.now() },
   console,
@@ -142,10 +150,12 @@ for (const [rel, shouldPatch] of cases) {
       check('output named .optimized.mp4', /\.optimized\.mp4$/.test(dl[0].download), dl[0].download)
       const blob = store[dl[0].href]
       check('blob is non-empty', blob && blob.size > 1000, blob && String(blob.size))
-      /* the bytes handed to the download must themselves be a patched file */
+      /* The download is assembled from the parts array, so verify that
+       * concatenating them really does yield a valid patched file. */
       if (blob) {
-        const bytes = blob.parts[0]
-        const info = sandbox.MP4Patch.inspect(bytes)
+        check('blob built from multiple parts', blob.parts.length > 1,
+          'parts=' + blob.parts.length)
+        const info = sandbox.MP4Patch.inspect(blob.bytes)
         check('blob is already-patched', info.alreadyPatched === true)
       }
     }

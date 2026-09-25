@@ -486,17 +486,18 @@
       if (top[i].type === 'moof') fail('Fragmented MP4/MOV files are not supported.')
     }
 
-    var ftypBox = null, moovBox = null, mdatBox = null
+    var ftypBoxes = [], moovBoxes = [], mdatBoxes = []
     for (var j = 0; j < top.length; j++) {
-      if (top[j].type === 'ftyp' && !ftypBox) ftypBox = top[j]
-      if (top[j].type === 'moov' && !moovBox) moovBox = top[j]
-      if (top[j].type === 'mdat' && !mdatBox) mdatBox = top[j]
+      if (top[j].type === 'ftyp') ftypBoxes.push(top[j])
+      else if (top[j].type === 'moov') moovBoxes.push(top[j])
+      else if (top[j].type === 'mdat') mdatBoxes.push(top[j])
     }
 
-    if (!ftypBox || !moovBox || !mdatBox) {
+    if (ftypBoxes.length !== 1 || moovBoxes.length !== 1 || mdatBoxes.length !== 1) {
       fail('Invalid MP4 — expected exactly one ftyp, moov and mdat box (found ' +
-        (ftypBox ? 1 : 0) + '/' + (moovBox ? 1 : 0) + '/' + (mdatBox ? 1 : 0) + ').')
+        ftypBoxes.length + '/' + moovBoxes.length + '/' + mdatBoxes.length + ').')
     }
+    var ftypBox = ftypBoxes[0], moovBox = moovBoxes[0], mdatBox = mdatBoxes[0]
 
     var moov = makeContainer('moov', parseContainer(buf, moovBox.start + moovBox.header, moovBox.end, 'moov'))
     var traks = findAll(moov.children, 'trak')
@@ -665,34 +666,47 @@
     report.moovGrew = moovBytes.length - originalMoovSize
     report.originalMoovSize = originalMoovSize
 
-    /* --- rebuild the file from the new order --- */
-    var finalMoov = moovBytes
-    var out = []
+    /* --- assemble the output as a list of parts ---
+     * The bulk of the file — mdat, ftyp, anything we do not touch — stays a
+     * view onto the input. The output is never materialised as one giant copy
+     * unless the caller asks for `data`, which keeps peak memory near 1x the
+     * file size instead of 3x. That is the difference between a large 4K
+     * capture working in a browser tab and taking the tab down. */
+    var parts = [], cursor = 0, mdatOutStart = -1, mdatOutEnd = -1
     for (var r = 0; r < order.length; r++) {
-      if (order[r].kind === 'moov') out.push(finalMoov)
-      else if (order[r].kind === 'mdat') {
-        out.push(buf.subarray(parsed.mdatBox.start, parsed.mdatBox.end))
-      } else out.push(order[r].bytes)
+      var piece
+      if (order[r].kind === 'moov') {
+        piece = moovBytes
+      } else if (order[r].kind === 'mdat') {
+        piece = buf.subarray(parsed.mdatBox.start, parsed.mdatBox.end)
+        mdatOutStart = cursor + parsed.mdatBox.header
+        mdatOutEnd = mdatOutStart + piece.length - parsed.mdatBox.header
+      } else {
+        piece = order[r].bytes
+      }
+      parts.push(piece)
+      cursor += piece.length
     }
 
-    var result = concat(out)
-    validatePatchedOutput(result)
-    return { data: result, report: report }
+    validateLayout(moovBytes, mdatOutStart, mdatOutEnd)
+
+    report.size = cursor
+    var result = { parts: parts, size: cursor, report: report }
+    /* Convenience for callers that want one buffer; costs a full copy. */
+    Object.defineProperty(result, 'data', {
+      enumerable: true,
+      get: function () { return concat(parts) }
+    })
+    return result
   }
 
-  function validatePatchedOutput(out) {
-    var top = scanBoxes(out, 0, out.length, 'patched output')
+  /* Validates by inspection of the rebuilt moov plus the computed media-data
+   * window, so the whole output never has to exist to be checked. */
+  function validateLayout(moovBytes, mdatStart, mdatEnd) {
+    if (mdatStart < 0) fail('Patched output has no media-data window.')
 
-    var moovs = top.filter(function (b) { return b.type === 'moov' })
-    var mdats = top.filter(function (b) { return b.type === 'mdat' })
-    if (moovs.length !== 1 || mdats.length !== 1) {
-      fail('Patched output must contain exactly one moov and one mdat.')
-    }
-
-    var moovBox = moovs[0], mdatBox = mdats[0]
-    var mdatStart = mdatBox.start + mdatBox.header
-
-    var moov = makeContainer('moov', parseContainer(out, moovBox.start + moovBox.header, moovBox.end, 'moov'))
+    /* serializeNode always writes an 8-byte header, so children start at 8. */
+    var moov = makeContainer('moov', parseContainer(moovBytes, 8, moovBytes.length, 'moov'))
 
     var mvhd = find(moov.children, 'mvhd')
     if (!mvhd || !isUnknownDuration(mvhd.payload)) {
@@ -706,7 +720,7 @@
       if (!node) continue
       var offs = readChunkOffsets(node)
       for (var j = 0; j < offs.length; j++) {
-        if (offs[j] < mdatStart || offs[j] >= mdatBox.end) {
+        if (offs[j] < mdatStart || offs[j] >= mdatEnd) {
           fail('A patched chunk offset (' + offs[j] + ') points outside the media data. ' +
             'Aborting to avoid writing a corrupt file.')
         }

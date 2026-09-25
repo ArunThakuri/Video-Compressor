@@ -465,8 +465,14 @@
           var res = MP4Patch.quickPatch(buf, { tag: TAG })
           var ms = Math.max(1, Math.round(performance.now() - t0))
 
-          var blob = new Blob([res.data], { type: 'video/mp4' })
-          var info = MP4Patch.inspect(res.data)
+          /* Feed the Blob the parts rather than one concatenated copy — the
+           * bulk of the output is still a view onto the input, so this avoids
+           * materialising a second full copy of the file. */
+          var blob = new Blob(res.parts, { type: 'video/mp4' })
+
+          /* Read the geometry off the input: the patch never changes it, and
+           * inspecting the output would force that extra copy anyway. */
+          var info = MP4Patch.inspect(buf)
           var video = info.tracks.filter(function (t) { return t.handler === 'vide' })[0]
 
           var row = {
@@ -474,7 +480,7 @@
             outName: f.name.replace(/\.[^.]+$/, '') + '.optimized.mp4',
             url: URL.createObjectURL(blob),
             before: buf.byteLength,
-            after: res.data.byteLength,
+            after: res.size,
             codec: info.videoCodec,
             samples: video ? video.samples : 0,
             ms: ms,
