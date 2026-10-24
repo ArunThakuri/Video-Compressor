@@ -107,6 +107,21 @@ check("all four modes exist", set(app.FORMATS) == {"best", "720", "480", "audio"
 check("best is capped at 1080", "height<=1080" in app.FORMATS["best"])
 check("audio has a fallback", "/" in app.FORMATS["audio"])
 
+print("\nyt-dlp arguments")
+
+bare = app.base_args(None)
+with_jar = app.base_args("/tmp/cookies.txt")
+
+# Without this flag yt-dlp silently skips its challenge solver and YouTube
+# extraction fails with "No video formats found" — the cookies and the deno
+# runtime are both irrelevant if it is missing.
+check("challenge solver is requested",
+      "--remote-components" in bare and "ejs:github" in bare, bare)
+check("no cookie flag when there is no jar", "--cookies" not in bare)
+check("cookie flag points at the jar",
+      "--cookies" in with_jar and "/tmp/cookies.txt" in with_jar, with_jar)
+check("playlists off", "--no-playlist" in bare)
+
 print("\ntrim / section downloads")
 
 

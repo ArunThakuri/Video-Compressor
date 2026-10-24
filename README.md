@@ -342,10 +342,10 @@ patch does not depend on it.
 - `--faststart` reorders `moov` ahead of `mdat`. It is off by default and is a
   genuine, standard improvement when you want it.
 - **The downloader is only as reliable as yt-dlp is that week.** Site
-  extractors break regularly and the fix is an update, not a patch here. A
-  datacenter IP — which is what any hosted server has — is challenged by
-  YouTube far more often than a home connection; `backend/README.md` covers
-  the cookie workaround.
+  extractors break regularly and the fix is an update, not a patch here.
+  YouTube from a hosted server needs three separate things — a cookie jar, a
+  JavaScript runtime and yt-dlp's challenge solver — and `backend/README.md`
+  says which failure message means which is missing.
 - **Clipping is YouTube-only, and the free tier is small.** Stream-copy cuts
   land on keyframes, exact cuts re-encode; and 1080p is the practical ceiling
   on a 512 MB instance.

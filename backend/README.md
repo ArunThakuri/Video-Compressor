@@ -47,15 +47,31 @@ The free plan sleeps after 15 minutes with no traffic. The next request wakes
 it, which takes about a minute. The page says so and retries rather than
 calling it an error.
 
-### YouTube blocks datacenter IPs
+### YouTube: three things have to be right
 
-Measured on this deployment: **TikTok works** (802 KB, 23.5 s, valid MP4
-verified end to end), and **YouTube does not** — it answers with
-`Failed to extract any player response`, which is its bot check rather than a
-fault in the request. Alternate `player_client` values were tried
-(`tv`, `android_vr`, `web_embedded`, `web_safari`) and made no difference from
-Render's address. `YTDLP_COOKIES` is the documented fix; without it, expect
-YouTube links to fail while every other supported site works.
+TikTok works with nothing configured (802 KB, 23.5 s, valid MP4, verified end to
+end). YouTube needs all of the following, and each missing piece fails with a
+different message — so read the message, not the symptom:
+
+| Missing | What yt-dlp says |
+|---|---|
+| No cookie jar | `Failed to extract any player response` — YouTube's bot check |
+| No JavaScript runtime | challenge warnings, then `No video formats found` |
+| `--remote-components ejs:github` | `No video formats found` |
+
+The last two are easy to confuse with a bad cookie jar, because the cookies are
+fine in both cases. yt-dlp needs a JS runtime to answer YouTube's `n` challenge,
+and it needs its EJS solver script, which it will only fetch when the
+`--remote-components ejs:github` flag is passed — `base_args()` in `app.py`
+always passes it now, and the Dockerfile installs **deno**, yt-dlp's default
+runtime.
+
+The solver is downloaded from GitHub on first use and cached for the life of the
+instance, so the first YouTube request after a cold start is slower.
+
+All of this was measured inside the built image rather than assumed: with valid
+cookies and the same IP, extraction produced formats only once both the runtime
+and the flag were present, and a 3 s–8 s clip then came back at 5.01 s.
 
 ---
 

@@ -239,6 +239,12 @@ def base_args(cookie_file: str | None) -> list[str]:
     ]
     if cookie_file:
         args += ["--cookies", cookie_file]
+    # yt-dlp only asks for its EJS challenge-solver script when told to, and
+    # without it YouTube extraction fails at "No video formats found" even when
+    # the cookies are valid and a JS runtime (deno, see the Dockerfile) is
+    # present. This was measured, not guessed: the same image with the same
+    # cookies produced formats only once this flag was added.
+    args += ["--remote-components", "ejs:github"]
     args += EXTRA_ARGS
     return args
 
