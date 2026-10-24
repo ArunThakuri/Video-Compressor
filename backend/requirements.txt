@@ -1,0 +1,4 @@
+# Pinned to the version the page was tested against. Bumping this is the whole
+# point of the server -- yt-dlp's site extractors go stale within weeks, and a
+# rebuild on the latest release is how you fix "video unavailable".
+yt-dlp==2026.10.21

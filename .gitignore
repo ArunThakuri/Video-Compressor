@@ -6,6 +6,8 @@ test/gen/
 test/res_*.mp4
 
 node_modules/
+__pycache__/
+*.pyc
 *.log
 .DS_Store
 Thumbs.db

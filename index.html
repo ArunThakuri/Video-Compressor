@@ -37,8 +37,64 @@
   .wrap {
     max-width: 720px;
     margin: 0 auto;
-    padding: 64px 24px 96px;
+    padding: 48px 24px 96px;
   }
+
+  /* ---------- nav ---------- */
+
+  /* Sticky, but the blur is gated behind @supports: on a browser without
+   * backdrop-filter the bar would otherwise be a 60%-opaque slab with the
+   * page scrolling visibly through it. Solid fill is the fallback. */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .nav {
+      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      backdrop-filter: saturate(140%) blur(12px);
+      -webkit-backdrop-filter: saturate(140%) blur(12px);
+    }
+  }
+  .nav-in {
+    max-width: 720px; margin: 0 auto;
+    padding: 0 24px;
+    height: 54px;
+    display: flex; align-items: center; gap: 18px;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 9px;
+    color: var(--text); text-decoration: none;
+    font-weight: 620; font-size: 14px; letter-spacing: -.012em;
+    flex: none;
+  }
+  .brand .mark {
+    width: 24px; height: 24px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+    color: var(--accent);
+  }
+  .links {
+    display: flex; align-items: center; gap: 2px;
+    margin-left: auto;
+  }
+  .links a {
+    color: var(--muted); text-decoration: none;
+    font-size: 13.5px; font-weight: 540;
+    padding: 6px 10px; border-radius: 8px;
+    transition: color .14s, background .14s;
+    white-space: nowrap;
+  }
+  .links a:hover { color: var(--text); background: var(--surface-2); }
+  .links a.on {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .links a.ext { color: var(--dim); }
+  .links a.ext:hover { color: var(--text); }
 
   /* ---------- header ---------- */
 
@@ -268,6 +324,12 @@
 
   @media (max-width: 560px) {
     .wrap { padding: 40px 18px 72px; }
+    .nav-in { padding: 0 18px; gap: 10px; height: 52px; }
+    /* At 320px the wordmark plus three links overflows, so the mark alone
+     * carries the brand and the links keep their full labels. */
+    .brand .word { display: none; }
+    .links a { padding: 6px 8px; font-size: 13px; }
+    .links a.ext { display: none; }
     .card-main { flex-wrap: wrap; }
     .stats { grid-template-columns: repeat(2, 1fr); }
     .stat:nth-child(2) { border-right: 0; }
@@ -276,6 +338,25 @@
 </style>
 </head>
 <body>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="index.html" aria-label="MP4 Optimizer, home">
+      <span class="mark" aria-hidden="true">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m5 12 5 5L20 7"/>
+        </svg>
+      </span>
+      <span class="word">MP4 Optimizer</span>
+    </a>
+    <nav class="links" aria-label="Main">
+      <a href="index.html" class="on" aria-current="page">Optimize</a>
+      <a href="download.html">Download</a>
+      <a href="https://github.com/ArunThakuri/Video-Compressor" class="ext" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
 <div class="wrap">
 
   <div class="eyebrow"><span class="dot"></span> Runs entirely on this machine</div>

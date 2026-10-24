@@ -15,6 +15,13 @@ that runs in a browser tab or from a terminal.
 **Browser** — open `index.html`. Drag a video in, get a patched one back.
 Works offline; the file never leaves the machine.
 
+There are two pages, reachable from the nav bar:
+
+| Page | Does |
+|---|---|
+| `index.html` | Optimize — patch an MP4/MOV you already have. Fully client-side. |
+| `download.html` | Download — fetch a video from YouTube, TikTok, Facebook and the rest. Needs the companion server below. |
+
 **No server needed.** Double-click `index.html` and it runs from `file://`.
 There is no `fetch`, no `XMLHttpRequest`, no ES module, and no external URL in
 either file, which is what `file://` actually blocks. Both halves were checked
@@ -69,6 +76,77 @@ node patch.js video.mp4 --no-tag
 ```
 
 `--inspect` works on already-patched files too, so you can verify your output.
+
+---
+
+## Downloading videos
+
+`download.html` fetches video from ~1,800 sites with yt-dlp, and can clip a
+YouTube video to a time range before it downloads.
+
+It needs a **small companion server**, and that is a hard constraint rather
+than a design choice: a browser cannot speak YouTube's or TikTok's protocol,
+and a static GitHub Pages site cannot run `yt-dlp`. Patching an MP4 is just
+reading bytes you already have; downloading is not.
+
+```
+GitHub Pages (download.html)  →  your server  →  yt-dlp  →  phone
+```
+
+The page stays static and works from a phone. The server is in `backend/` — one
+Python file and a Dockerfile, no framework — and deploys free on Render:
+
+```bash
+# Render: New → Blueprint → pick this repo. It reads render.yaml.
+# Then paste the https://…onrender.com URL into the page's status bar once;
+# it is remembered per device. Or set DEFAULT_API in download.html to ship it.
+```
+
+Free-tier caveat: the instance sleeps after 15 minutes idle and takes ~50 s to
+wake. The page says so explicitly and retries, instead of reporting an outage.
+
+### Why a server, when the rest of this is offline
+
+The optimizer's whole selling point is that nothing leaves the machine, and
+that is still true — the downloader is a separate tool with a different
+requirement. It stores nothing: each job downloads to a temp directory, streams
+that file to the browser, then deletes it.
+
+An open instance is a download proxy anyone can use, so `backend/app.py` ships
+with a **site allowlist**, per-IP rate limiting, a concurrency cap, and an
+optional `API_TOKEN`. See `backend/README.md` for all of it, plus the cookie
+setup for when YouTube challenges a datacenter IP.
+
+### Clipping (YouTube only)
+
+Set a start and an end — `1:30` or plain seconds — and only that section is
+fetched, so a ten-minute video you need thirty seconds of does not download in
+full. `--download-sections` is reliable on YouTube and not on most other
+extractors, so the box only appears there rather than failing halfway.
+
+Two modes, and the trade-off is real:
+
+- **Stream copy** (default) — the frames are copied, nothing is re-encoded.
+  But a cut can only land on a keyframe, so the clip may start a second or two
+  before the time you asked for.
+- **Exact cut** — `--force-keyframes-at-cuts` re-encodes the two edges. The
+  clip starts where you asked; it is slower and not bit-identical.
+
+Verified against a real 19-second video: `5`→`12` returned 7.005 s in stream-copy
+mode and 7.000 s with an exact cut.
+
+### Keeping the downloader working
+
+yt-dlp's extractors go stale within weeks, and "video unavailable" almost
+always means *update yt-dlp*, not that the video is gone:
+
+```bash
+py -3.12 -m pip install -U yt-dlp
+# in the container: bump backend/requirements.txt and redeploy
+```
+
+The server pins the version in `backend/requirements.txt`; this machine is on
+`2026.10.21`.
 
 ---
 
@@ -263,6 +341,14 @@ patch does not depend on it.
   you have confirmed the patched file behaves.
 - `--faststart` reorders `moov` ahead of `mdat`. It is off by default and is a
   genuine, standard improvement when you want it.
+- **The downloader is only as reliable as yt-dlp is that week.** Site
+  extractors break regularly and the fix is an update, not a patch here. A
+  datacenter IP — which is what any hosted server has — is challenged by
+  YouTube far more often than a home connection; `backend/README.md` covers
+  the cookie workaround.
+- **Clipping is YouTube-only, and the free tier is small.** Stream-copy cuts
+  land on keyframes, exact cuts re-encode; and 1080p is the practical ceiling
+  on a 512 MB instance.
 
 ---
 
@@ -272,14 +358,22 @@ patch does not depend on it.
 |---|---|
 | `engine.js` | the patcher — MP4 box parser, three edits, validation. Node + browser |
 | `index.html` | offline drag-and-drop UI, single file |
+| `download.html` | downloader UI, single file; talks to `backend/` |
 | `patch.js` | CLI: batch, inspect, tagging, faststart |
+| `backend/app.py` | companion download server — yt-dlp + ffmpeg, streaming, allowlist, rate limits |
+| `backend/Dockerfile` · `backend/requirements.txt` | the deployable image; yt-dlp version is pinned here |
+| `render.yaml` | Render blueprint for the free tier |
 | `test/ui-test.js` | drives the UI's real code path against a stubbed DOM |
+| `test/download-page-check.mjs` | inline script parses, navs agree, no remote assets, no blob buffering |
+| `test/backend-test.py` | allowlist, URL and time parsing, filename safety, error text |
 | `test/file-download-check.mjs` | proves blob downloads save over `file://` (needs Chrome) |
 | `test/stream-save-check.mjs` | exercises the streaming save and its cancel fallback (needs Chrome) |
 | `test/mem-bench.js` | peak-memory ratios for the parts vs concat output shapes |
 | `test/*.mp4`, `test/*.mov` | generated fixtures (H.264 faststart / non-faststart, HEVC, MOV, fragmented, VP9) |
 
-No dependencies. Node 18+ for the CLI; any modern browser for the UI.
+No dependencies for the optimizer. Node 18+ for the CLI; any modern browser for
+the UI. The download server needs Python 3.12 with `yt-dlp` and `ffmpeg`, which
+the Dockerfile provides.
 
 ### Regenerating the fixtures
 

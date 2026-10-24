@@ -1,0 +1,32 @@
+# Render blueprint. Point Render at this repository, it reads this file and
+# builds backend/Dockerfile as a free web service.
+#
+# Free instances sleep after 15 minutes idle; the first request afterwards
+# takes about a minute to wake, which the download page handles explicitly
+# rather than reporting as a failure.
+services:
+  - type: web
+    name: mp4-downloader
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Keeps one long 4K pull from filling the free instance's disk. Raise it
+      # if you accept the risk; it is the main knob that matters.
+      - key: MAX_FILESIZE_MB
+        value: "400"
+      # Two at a time is the most a 512 MB instance handles comfortably.
+      - key: MAX_CONCURRENT
+        value: "2"
+      # Set this to your GitHub Pages origin once you know it, e.g.
+      # https://arunthakuri.github.io . Left as "*" the API answers any origin;
+      # the download itself is a navigation, so CORS is not what protects it.
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      # Optional shared secret. Set it to stop strangers using the deployment,
+      # then paste the same value into the page once (it is remembered).
+      # - key: API_TOKEN
+      #   sync: false
