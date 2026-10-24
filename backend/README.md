@@ -31,11 +31,31 @@ Modes: `best` (≤1080p), `720`, `480`, `audio` (MP3).
 To ship the URL in the page instead, set `DEFAULT_API` near the top of
 `download.html`'s script to the same value.
 
+### Auto-deploy does not work for a public-repo service
+
+When the service is created from a **public** repo — the path that avoids
+authorising Render's GitHub app — Render disables auto-deploy for it. Pushing to
+`main` therefore does **not** rebuild the service. After any change under
+`backend/`, use **Manual Deploy → Deploy latest commit** on the service page.
+
+Connecting the GitHub app would restore auto-deploy, at the cost of granting
+Render access to your repositories.
+
 ### First request is slow
 
 The free plan sleeps after 15 minutes with no traffic. The next request wakes
 it, which takes about a minute. The page says so and retries rather than
 calling it an error.
+
+### YouTube blocks datacenter IPs
+
+Measured on this deployment: **TikTok works** (802 KB, 23.5 s, valid MP4
+verified end to end), and **YouTube does not** — it answers with
+`Failed to extract any player response`, which is its bot check rather than a
+fault in the request. Alternate `player_client` values were tried
+(`tv`, `android_vr`, `web_embedded`, `web_safari`) and made no difference from
+Render's address. `YTDLP_COOKIES` is the documented fix; without it, expect
+YouTube links to fail while every other supported site works.
 
 ---
 
