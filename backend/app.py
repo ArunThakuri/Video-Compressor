@@ -209,6 +209,19 @@ def clean_error(text: str) -> str:
             msg = line[6:].strip()
             # Strip the "[youtube] abc123: " extractor prefix.
             msg = re.sub(r"^\[[^\]]+\]\s*[^:]{0,40}:\s*", "", msg)
+            # yt-dlp's wording for YouTube's datacenter-IP bot check is a
+            # generic "report this issue", which sends people to the wrong
+            # place. Name the real cause instead.
+            low = msg.lower()
+            if ("failed to extract any player response" in low
+                    or "not a bot" in low
+                    or "sign in to confirm" in low):
+                return (
+                    "YouTube is treating this server's IP address as automated "
+                    "traffic. That is YouTube's bot check, not a fault in the "
+                    "download. Setting YTDLP_COOKIES from a signed-in browser "
+                    "session gets past it — see backend/README.md."
+                )
             return msg[:400]
     for line in reversed(text.splitlines()):
         if line.strip():

@@ -130,6 +130,10 @@
     max-width: 56ch;
   }
   .lede strong { color: var(--text); font-weight: 560; }
+  .lede .fine {
+    display: block; margin-top: 10px;
+    font-size: 13px; color: var(--dim);
+  }
 
   /* ---------- server status ---------- */
 
@@ -465,8 +469,10 @@
   <div class="eyebrow"><span class="dot"></span> Powered by yt-dlp</div>
   <h1>Save any video, <em>to your phone</em>.</h1>
   <p class="lede">
-    Paste a link from YouTube, TikTok, Facebook, Instagram, X or Vimeo —
+    Paste a link from TikTok, Instagram, Facebook, X or Vimeo —
     <strong>1,800+ sites</strong>. No app to install, no account, no ads.
+    <span class="fine">YouTube needs a one-time cookie setup on the server;
+    see the note in How it works.</span>
   </p>
 
   <div class="status" id="status" role="status" aria-live="polite">
@@ -572,6 +578,21 @@
       </details>
 
       <details>
+        <summary>YouTube says it can't verify I'm not a bot</summary>
+        <p>
+          The download runs from a server, and YouTube treats server IP addresses as automated
+          traffic far more aggressively than a home connection. TikTok, Instagram and the rest
+          are unaffected. YouTube's own message for this is a generic “failed to extract any
+          player response”, which is why the page spells it out instead.
+        </p>
+        <p>
+          The fix is to give the server a cookie jar from a signed-in browser session: set
+          <code>YTDLP_COOKIES</code> on the server (see <code>backend/README.md</code>). Until
+          then, YouTube links will fail here while every other site works.
+        </p>
+      </details>
+
+      <details>
         <summary>Is this legal to use?</summary>
         <p>
           That depends on the video and where you live. Downloading your own uploads, Creative
@@ -602,7 +623,7 @@
    * A ?api=https://… query string wins over both, which makes a
    * configured link shareable.
    * --------------------------------------------------------------- */
-  var DEFAULT_API = ''
+  var DEFAULT_API = 'https://mp4-downloader-kpqh.onrender.com'
 
   var LS_API = 'mp4dl.api'
   var LS_TOKEN = 'mp4dl.token'
